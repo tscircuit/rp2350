@@ -91,6 +91,12 @@ Check them without writing (this is what CI runs):
 bun run snapshot
 ```
 
+The checked-in **PCB** snapshots are generated on Linux. The autorouter takes
+slightly different paths on macOS, so `bun run snapshot:update` on a Mac will
+produce a diff that CI then rejects — regenerate PCB snapshots on Linux (or
+accept CI's output) when you change the layout. Schematic snapshots are
+identical across platforms.
+
 ## Bill of materials
 
 Every part carries a JLCPCB part number via its import in
