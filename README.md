@@ -91,11 +91,25 @@ Check them without writing (this is what CI runs):
 bun run snapshot
 ```
 
-The checked-in **PCB** snapshots are generated on Linux. The autorouter takes
-slightly different paths on macOS, so `bun run snapshot:update` on a Mac will
-produce a diff that CI then rejects — regenerate PCB snapshots on Linux (or
-accept CI's output) when you change the layout. Schematic snapshots are
-identical across platforms.
+The checked-in **PCB** snapshots are generated on **x86_64**. The autorouter is
+deterministic for a given CPU architecture but not across architectures, so an
+arm64 machine (Apple Silicon, `ubuntu-24.04-arm`) produces different trace
+geometry from x86_64 — same pad placement and same via count, different routes.
+Measured on one commit with identical Bun and lockfile:
+
+| | `index.circuit-pcb` | `index.circuit-schematic` |
+| --- | --- | --- |
+| Linux x86_64 | `b1591158` | `8aa18d70` |
+| Linux arm64 | `f6e41275` | `8aa18d70` |
+| macOS arm64 | `f6e41275` | `8aa18d70` |
+
+The operating system is not a factor — Linux arm64 and macOS arm64 agree
+exactly. Schematic snapshots are identical everywhere.
+
+So on Apple Silicon, `bun run snapshot:update` will produce a PCB diff that CI
+rejects. Regenerate on x86_64, or take CI's output. Also run
+`bun install --frozen-lockfile` first: CI pins its Bun version and installs
+frozen, and a drifting dependency tree changes the router too.
 
 ## Bill of materials
 
@@ -108,8 +122,8 @@ Every part carries a JLCPCB part number via its import in
 | U2 | W25Q16JVUXIQ | 16 Mbit QSPI flash |
 | U3 | AP2112K-3.3TRG1 | 600 mA 3.3 V LDO |
 | J_USB | TYPE-C-16PIN-2MD-073 | USB-C receptacle |
-| Y1 | X322512MSB4SI | 12 MHz crystal |
-| L_CORE | 3.3 µH 0805 | buck inductor |
+| Y1 | ABM8-272-T3 (C20625731) | 12 MHz crystal specified by the RP2350 design guide |
+| L_CORE | AOTA-B201610S3R3-101-T (C42411119) | 3.3 µH 0806 buck inductor, polarity-marked |
 | L_AVDD | 600 Ω @ 100 MHz 0603 | ADC supply ferrite |
 | SW_BOOT / SW_RUN | SKRPACE010 | tactile buttons |
 | D_VBUS | B5819W SL | Schottky |

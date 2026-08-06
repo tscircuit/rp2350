@@ -135,3 +135,122 @@ test("Microcontroller_RP2350 wires the on-chip buck converter network", async ()
     circuit.db.source_component.getWhere({ name: "R_USB2" }),
   ).toBeUndefined()
 })
+
+test("Microcontroller_RP2350 uses the recommended crystal and damping resistor", async () => {
+  const circuit = new Circuit()
+
+  circuit.add(
+    <board width="30mm" height="70mm" routingDisabled>
+      <Microcontroller_RP2350 name="MCU" />
+    </board>,
+  )
+
+  await circuit.renderUntilSettled()
+
+  const manufacturerPartNumbers = circuit.db.source_component
+    .list()
+    .map((component) => component.manufacturer_part_number)
+  const portFor = (componentName: string, portName: string) => {
+    const component = circuit.db.source_component.getWhere({
+      name: componentName,
+    })!
+    return circuit.db.source_port
+      .list()
+      .find(
+        (port) =>
+          port.source_component_id === component.source_component_id &&
+          (port.name === portName || port.port_hints?.includes(portName)),
+      )!
+  }
+  const portsSharingTraceWith = (sourcePortId: string) =>
+    circuit.db.source_trace
+      .list()
+      .filter((trace) => trace.connected_source_port_ids.includes(sourcePortId))
+      .flatMap((trace) => trace.connected_source_port_ids)
+
+  // "Hardware design with RP2350" specifies the ABM8-272-T3 and warns that any
+  // deviation needs re-testing across temperature.
+  expect(manufacturerPartNumbers).toContain("ABM8-272-T3")
+  expect(manufacturerPartNumbers).not.toContain("X322512MSB4SI")
+
+  // XOUT reaches the crystal only through the 1k damping resistor, which keeps
+  // the 50 ohm max ESR crystal from being overdriven at IOVDD = 3.3V.
+  expect(portsSharingTraceWith(portFor("U1", "XOUT").source_port_id)).toContain(
+    portFor("R_XOUT", "pin2").source_port_id,
+  )
+  expect(portsSharingTraceWith(portFor("Y1", "pin3").source_port_id)).toContain(
+    portFor("R_XOUT", "pin1").source_port_id,
+  )
+  const dampingResistor = circuit.db.source_component.getWhere({
+    name: "R_XOUT",
+  })!
+  expect(dampingResistor.ftype).toBe("simple_resistor")
+  expect((dampingResistor as { resistance: number }).resistance).toBe(1000)
+})
+
+test("Microcontroller_RP2350 series-terminates the BOOTSEL button", async () => {
+  const circuit = new Circuit()
+
+  circuit.add(
+    <board width="30mm" height="70mm" routingDisabled>
+      <Microcontroller_RP2350 name="MCU" />
+    </board>,
+  )
+
+  await circuit.renderUntilSettled()
+
+  const portFor = (componentName: string, portName: string) => {
+    const component = circuit.db.source_component.getWhere({
+      name: componentName,
+    })!
+    return circuit.db.source_port
+      .list()
+      .find(
+        (port) =>
+          port.source_component_id === component.source_component_id &&
+          (port.name === portName || port.port_hints?.includes(portName)),
+      )!
+  }
+  const portsSharingTraceWith = (sourcePortId: string) =>
+    circuit.db.source_trace
+      .list()
+      .filter((trace) => trace.connected_source_port_ids.includes(sourcePortId))
+      .flatMap((trace) => trace.connected_source_port_ids)
+
+  // QSPI_SS is a live flash signal, so the button goes through 1k rather than
+  // shorting it to ground (R6 in the hardware design guide).
+  const bootButtonPorts = portsSharingTraceWith(
+    portFor("SW_BOOT", "pin1").source_port_id,
+  )
+  expect(bootButtonPorts).toContain(portFor("R_BOOTSEL", "pin1").source_port_id)
+  expect(bootButtonPorts).not.toContain(portFor("U1", "QSPI_SS").source_port_id)
+  expect(
+    portsSharingTraceWith(portFor("U1", "QSPI_SS").source_port_id),
+  ).toContain(portFor("R_BOOTSEL", "pin2").source_port_id)
+  const bootselResistor = circuit.db.source_component.getWhere({
+    name: "R_BOOTSEL",
+  })!
+  expect(bootselResistor.ftype).toBe("simple_resistor")
+  expect((bootselResistor as { resistance: number }).resistance).toBe(1000)
+})
+
+test("Microcontroller_RP2350 uses the polarity-marked Abracon core inductor", async () => {
+  const circuit = new Circuit()
+
+  circuit.add(
+    <board width="30mm" height="70mm" routingDisabled>
+      <Microcontroller_RP2350 name="MCU" />
+    </board>,
+  )
+
+  await circuit.renderUntilSettled()
+
+  // The regulator is sensitive to the coil winding direction relative to
+  // C_VREG_OUT, so the guide calls for this specific reeled part rather than a
+  // generic 3.3uH.
+  const coreInductor = circuit.db.source_component.getWhere({
+    name: "L_CORE",
+  })!
+  expect(coreInductor.manufacturer_part_number).toBe("AOTA-B201610S3R3-101-T")
+  expect(coreInductor.supplier_part_numbers?.jlcpcb).toContain("C42411119")
+})
