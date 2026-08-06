@@ -3,7 +3,8 @@ import { RP2350A } from "./imports/RP2350A"
 import { TYPE_C_16PIN_2MD_073_ } from "./imports/TYPE_C_16PIN_2MD_073_"
 import { W25Q16JVUXIQ } from "./imports/W25Q16JVUXIQ"
 import { AP2112K_3_3TRG1 } from "./imports/AP2112K_3_3TRG1"
-import { X322512MSB4SI } from "./imports/X322512MSB4SI"
+import { ABM8_272_T3 } from "./imports/ABM8_272_T3"
+import { AOTA_B201610S3R3_101_T } from "./imports/AOTA_B201610S3R3_101_T"
 import { SKRPACE010 } from "./imports/SKRPACE010"
 import { B5819W_SL } from "./imports/B5819W_SL"
 import { XL_1608SURC_06 } from "./imports/XL_1608SURC_06"
@@ -50,6 +51,11 @@ export type MicrocontrollerRP2350Props = Omit<
  * Unlike the RP2040 module there are no 27 ohm USB series resistors: the RP2350
  * USB PHY has on-chip series termination, matching the Raspberry Pi Pico 2
  * reference design.
+ *
+ * The crystal, its 1k damping resistor, the BOOTSEL series resistor and the
+ * core inductor follow "Hardware design with RP2350" (RP-008280-DS), which
+ * calls out specific parts for each rather than generic equivalents:
+ * https://datasheets.raspberrypi.com/rp2350/hardware-design-with-rp2350.pdf
  */
 export const Microcontroller_RP2350 = ({
   name = "Microcontroller_RP2350",
@@ -352,10 +358,8 @@ export const Microcontroller_RP2350 = ({
     {/* ---------------------------------------------------------------- */}
     {/* RP2350 on-chip buck converter support network                      */}
     {/* ---------------------------------------------------------------- */}
-    <inductor
+    <AOTA_B201610S3R3_101_T
       name="L_CORE"
-      inductance="3.3uH"
-      footprint="0805"
       schSectionName={schSections.vreg(name)}
       pcbX={3.4}
       pcbY={7.6}
@@ -431,7 +435,7 @@ export const Microcontroller_RP2350 = ({
     {/* ---------------------------------------------------------------- */}
     {/* Crystal                                                            */}
     {/* ---------------------------------------------------------------- */}
-    <X322512MSB4SI
+    <ABM8_272_T3
       name="Y1"
       schSectionName={schSections.clock(name)}
       pcbX={-0.5}
@@ -439,9 +443,11 @@ export const Microcontroller_RP2350 = ({
       schX={1.2}
       schY={-12.5}
     />
+    {/* 15pF pairs with the ABM8-272-T3's 10pF load capacitance once ~3pF of
+        board parasitics are included. */}
     <capacitor
       name="C_XIN"
-      capacitance="18pF"
+      capacitance="15pF"
       footprint="0402"
       schSectionName={schSections.clock(name)}
       schOrientation="vertical"
@@ -452,7 +458,7 @@ export const Microcontroller_RP2350 = ({
     />
     <capacitor
       name="C_XOUT"
-      capacitance="18pF"
+      capacitance="15pF"
       footprint="0402"
       schSectionName={schSections.clock(name)}
       schOrientation="vertical"
@@ -460,6 +466,18 @@ export const Microcontroller_RP2350 = ({
       pcbY={-12}
       schX={2.2}
       schY={-14.2}
+    />
+    {/* 1k series damping resistor keeps the 50 ohm max ESR crystal from being
+        overdriven at IOVDD = 3.3V. */}
+    <resistor
+      name="R_XOUT"
+      resistance="1k"
+      footprint="0402"
+      schSectionName={schSections.clock(name)}
+      pcbX={3.6}
+      pcbY={-9}
+      schX={3.8}
+      schY={-12.5}
     />
 
     {/* ---------------------------------------------------------------- */}
@@ -480,6 +498,18 @@ export const Microcontroller_RP2350 = ({
       pcbY={-12.5}
       pcbRotation={90}
       schX={12.8}
+      schY={-12}
+    />
+    {/* 1k in series with the BOOTSEL button. QSPI_SS is a live flash signal,
+        so the button must not short it straight to GND. */}
+    <resistor
+      name="R_BOOTSEL"
+      resistance="1k"
+      footprint="0402"
+      schSectionName={schSections.controls(name)}
+      pcbX={5.5}
+      pcbY={19.5}
+      schX={6.9}
       schY={-12}
     />
     <resistor
@@ -1033,7 +1063,8 @@ export const Microcontroller_RP2350 = ({
 
     {/* Crystal */}
     <trace name="XIN" from=".Y1 > .pin1" to=".U1 > .XIN" />
-    <trace name="XOUT" from=".Y1 > .pin3" to=".U1 > .XOUT" />
+    <trace name="XOUT_R" from=".Y1 > .pin3" to=".R_XOUT > .pin1" />
+    <trace name="XOUT" from=".R_XOUT > .pin2" to=".U1 > .XOUT" />
     <trace name="CXIN" from=".C_XIN > .pin1" to=".Y1 > .pin1" />
     <trace name="CXIN_G" from=".C_XIN > .pin2" to="net.GND" {...gndLabel} />
     <trace name="CXOUT" from=".C_XOUT > .pin1" to=".Y1 > .pin3" />
@@ -1042,7 +1073,8 @@ export const Microcontroller_RP2350 = ({
     <trace name="Y1_G2" from=".Y1 > .pin4" to="net.GND" {...gndLabel} />
 
     {/* BOOTSEL and RUN */}
-    <trace name="BOOT_SW" from=".SW_BOOT > .pin1" to=".U1 > .QSPI_SS" />
+    <trace name="BOOT_SW" from=".SW_BOOT > .pin1" to=".R_BOOTSEL > .pin1" />
+    <trace name="BOOT_SR" from=".R_BOOTSEL > .pin2" to=".U1 > .QSPI_SS" />
     <trace name="BOOT_G" from=".SW_BOOT > .pin3" to="net.GND" {...gndLabel} />
     <trace name="BOOT_R" from=".R_BOOT > .pin1" to=".U1 > .QSPI_SS" />
     <trace
