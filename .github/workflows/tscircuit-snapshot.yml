@@ -14,6 +14,6 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.5
-      - run: bun install
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
       - run: bunx tsci snapshot
